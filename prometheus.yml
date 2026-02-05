@@ -1,0 +1,38 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # CodeBox API metrics
+  - job_name: 'codebox-api'
+    static_configs:
+      - targets: ['api:3000']
+    metrics_path: '/metrics'
+
+  # CodeBox Worker metrics (if exposed)
+  - job_name: 'codebox-worker'
+    static_configs:
+      - targets: ['worker:3000']
+    metrics_path: '/metrics'
+
+  # Redis metrics (requires redis_exporter)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+
+  # Docker metrics (requires cadvisor)
+  # - job_name: 'cadvisor'
+  #   static_configs:
+  #     - targets: ['cadvisor:8080']
