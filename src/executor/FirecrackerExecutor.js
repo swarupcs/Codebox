@@ -1,11 +1,16 @@
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { gunzip } from 'zlib';
+import { promisify } from 'util';
 import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 import { getStatusById } from '../languages/index.js';
 import ResultParser from './ResultParser.js';
+
+const gunzipAsync = promisify(gunzip);
+const execFileAsync = promisify(execFile);
 
 const FC_BASE_DIR = '/var/lib/codebox/firecracker';
 const KERNEL_PATH = `${FC_BASE_DIR}/kernels/vmlinux`;
@@ -137,6 +142,11 @@ class FirecrackerExecutor {
         await this.runCommand('sudo', ['chown', '1001:1001', stdinPath]);
       }
 
+      // Extract additional files (base64-encoded tar.gz) if provided
+      if (submission.additional_files) {
+        await this.writeAdditionalFiles(`${mountDir}/box`, submission);
+      }
+
       // Write execution script
       const script = this.createExecutionScript(submission);
       const scriptPath = `${mountDir}/box/run.sh`;
@@ -147,6 +157,45 @@ class FirecrackerExecutor {
       // Unmount
       await this.runCommand('sudo', ['umount', mountDir]);
       await fs.rmdir(mountDir);
+    }
+  }
+
+  /**
+   * Write additional files (base64-encoded tar.gz) to the box directory
+   */
+  async writeAdditionalFiles(boxDir, submission) {
+    const tmpTar = `${boxDir}/_additional.tar`;
+
+    try {
+      const gzBuffer = Buffer.from(submission.additional_files, 'base64');
+
+      // Try gunzip first (tar.gz), fall back to raw tar
+      let tarBuffer;
+      try {
+        tarBuffer = await gunzipAsync(gzBuffer);
+      } catch {
+        tarBuffer = gzBuffer;
+      }
+
+      await fs.writeFile(tmpTar, tarBuffer);
+      await execFileAsync('tar', ['xf', tmpTar, '-C', boxDir]);
+      await this.runCommand('sudo', ['chown', '-R', '1001:1001', boxDir]);
+      await fs.unlink(tmpTar);
+
+      logger.info({
+        event: 'additional_files_extracted',
+        token: submission.token,
+        size: gzBuffer.length,
+      });
+    } catch (error) {
+      // Clean up temp file on failure
+      try { await fs.unlink(tmpTar); } catch {}
+      logger.error({
+        event: 'additional_files_extract_failed',
+        token: submission.token,
+        error: error.message,
+      });
+      throw new Error(`Failed to extract additional files: ${error.message}`);
     }
   }
 

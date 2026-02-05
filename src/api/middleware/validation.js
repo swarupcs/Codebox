@@ -30,7 +30,7 @@ const submissionSchema = Joi.object({
   redirect_stderr_to_stdout: Joi.boolean().default(false),
   enable_network: Joi.boolean().default(false),
   callback_url: Joi.string().uri().allow('', null).default(null),
-  additional_files: Joi.string().allow('', null).default(null),
+  additional_files: Joi.string().allow('', null).max(config.execution.maxAdditionalFilesSize).default(null),
 });
 
 // Batch submission validation

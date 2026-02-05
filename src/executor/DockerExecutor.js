@@ -1,9 +1,13 @@
 import Docker from 'dockerode';
 import { Readable } from 'stream';
+import { gunzip } from 'zlib';
+import { promisify } from 'util';
 import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 import { getStatusById } from '../languages/index.js';
 import ResultParser from './ResultParser.js';
+
+const gunzipAsync = promisify(gunzip);
 
 class DockerExecutor {
   constructor() {
@@ -29,6 +33,11 @@ class DockerExecutor {
 
       // Copy source code to container
       await this.copySourceCode(container, submission);
+
+      // Copy additional files (e.g., JSON parser headers/libs) if provided
+      if (submission.additional_files) {
+        await this.copyAdditionalFiles(container, submission);
+      }
 
       // If compiled language, run compilation first
       if (language.compile_cmd) {
@@ -145,6 +154,41 @@ class DockerExecutor {
     const tarStream = this.createTarStream(fileName, source_code);
 
     await container.putArchive(tarStream, { path: '/box' });
+  }
+
+  /**
+   * Copy additional files (base64-encoded tar.gz) into the container
+   */
+  async copyAdditionalFiles(container, submission) {
+    const { additional_files } = submission;
+
+    try {
+      const gzBuffer = Buffer.from(additional_files, 'base64');
+
+      // Try gunzip first (tar.gz), fall back to raw tar
+      let tarBuffer;
+      try {
+        tarBuffer = await gunzipAsync(gzBuffer);
+      } catch {
+        // Not gzipped — treat as raw tar
+        tarBuffer = gzBuffer;
+      }
+
+      await container.putArchive(Readable.from(tarBuffer), { path: '/box' });
+
+      logger.info({
+        event: 'additional_files_copied',
+        token: submission.token,
+        size: gzBuffer.length,
+      });
+    } catch (error) {
+      logger.error({
+        event: 'additional_files_copy_failed',
+        token: submission.token,
+        error: error.message,
+      });
+      throw new Error(`Failed to copy additional files: ${error.message}`);
+    }
   }
 
   /**

@@ -3,6 +3,7 @@ const config = {
     port: parseInt(process.env.PORT) || 3000,
     nodeEnv: process.env.NODE_ENV || 'development',
     apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:3000',
+    bodyLimit: process.env.BODY_LIMIT || '5mb',
   },
 
   redis: {
@@ -23,6 +24,7 @@ const config = {
     maxMemoryLimit: parseInt(process.env.MAX_MEMORY_LIMIT) || 512000,
     maxProcesses: parseInt(process.env.MAX_PROCESSES) || 60,
     maxSourceSize: parseInt(process.env.MAX_SOURCE_SIZE) || 65536,
+    maxAdditionalFilesSize: parseInt(process.env.MAX_ADDITIONAL_FILES_SIZE) || 2097152, // 2MB base64
     defaultStackLimit: parseInt(process.env.DEFAULT_STACK_LIMIT) || 64000,
   },
 
