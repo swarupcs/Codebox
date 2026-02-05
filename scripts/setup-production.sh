@@ -160,9 +160,7 @@ EOF
 
 echo -e "${GREEN}✓ Configuration created${NC}"
 
-# Update Caddyfile with domain
-sed -i "s/{\$DOMAIN:localhost}/${DOMAIN}/" Caddyfile 2>/dev/null || \
-    sed -i '' "s/{\$DOMAIN:localhost}/${DOMAIN}/" Caddyfile
+# Caddyfile uses ${DOMAIN} env var directly, no need to modify it
 
 # Step 7: Build and start services
 echo -e "${GREEN}[7/7] Building and starting services...${NC}"

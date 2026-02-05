@@ -135,6 +135,101 @@ Test: curl https://api.yourdomain.com/health
 
 ---
 
+## Production Hardening (Optional)
+
+Secure your droplet before deploying. Run these commands as `root`.
+
+### 1. Create Deploy User
+
+```bash
+# Create user with sudo access
+adduser deploy
+usermod -aG sudo deploy
+usermod -aG docker deploy
+
+# Copy SSH keys to new user
+mkdir -p /home/deploy/.ssh
+cp ~/.ssh/authorized_keys /home/deploy/.ssh/
+chown -R deploy:deploy /home/deploy/.ssh
+chmod 700 /home/deploy/.ssh
+chmod 600 /home/deploy/.ssh/authorized_keys
+```
+
+### 2. Disable Root & Password Login
+
+```bash
+# Edit SSH config
+nano /etc/ssh/sshd_config
+```
+
+Update these lines:
+```
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+```
+
+```bash
+# Restart SSH
+systemctl restart sshd
+```
+
+> **Warning:** Make sure you can login as `deploy` user before disabling root!
+
+### 3. Configure Firewall
+
+```bash
+# Allow only essential ports
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp    # SSH
+ufw allow 80/tcp    # HTTP
+ufw allow 443/tcp   # HTTPS
+ufw enable
+```
+
+### 4. Enable Automatic Security Updates
+
+```bash
+apt install unattended-upgrades
+dpkg-reconfigure -plow unattended-upgrades
+```
+
+### 5. Install Fail2Ban (Block Brute Force)
+
+```bash
+apt install fail2ban
+systemctl enable fail2ban
+systemctl start fail2ban
+```
+
+### 6. Run Setup as Deploy User
+
+```bash
+# Login as deploy user
+ssh deploy@your-droplet-ip
+
+# Clone and setup
+sudo git clone https://github.com/chaicode/codebox.git /opt/codebox
+sudo chown -R deploy:deploy /opt/codebox
+cd /opt/codebox
+
+# Run production setup
+./scripts/setup-production.sh api.yourdomain.com
+```
+
+### Quick Security Checklist
+
+- [ ] Non-root user created (`deploy`)
+- [ ] SSH key authentication only
+- [ ] Root login disabled
+- [ ] Password login disabled
+- [ ] Firewall enabled (UFW)
+- [ ] Fail2Ban installed
+- [ ] Auto-updates enabled
+
+---
+
 ## API Reference
 
 ### Submissions
