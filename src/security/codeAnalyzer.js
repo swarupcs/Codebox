@@ -50,7 +50,6 @@ const C_CPP_PATTERNS = [
   { pattern: /while\s*\(fork\s*\(\)/, reason: 'fork bomb' },
   { pattern: /:\s*fork\s*\(\)\s*\|/, reason: 'fork bomb' },
   { pattern: /keylog/i, reason: 'keylogger indicator' },
-  { pattern: /\/bin\/sh.*-[ic]/, reason: 'shell execution' },
 ];
 
 // ── Java patterns (language ID 62) ──────────────────────────────────────────

@@ -2,7 +2,6 @@ import { execFile } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
 import { promisify } from 'util';
-import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 import { getStatusById } from '../languages/index.js';
 
@@ -33,7 +32,7 @@ class IsolateExecutor {
         '--init', `--box-id=${boxId}`, '--cg',
       ]);
       boxDir = initOut.trim();                     // e.g. /var/local/lib/isolate/0/box
-      const workDir = path.join(boxDir, 'box');    // files visible as /box inside sandbox
+      const workDir = boxDir;                      // --init already returns the /box path
 
       // ── Write source code (skip for multi-file) ─────────────────────
       if (language.id !== MULTI_FILE_LANGUAGE_ID && submission.source_code) {
@@ -56,25 +55,29 @@ class IsolateExecutor {
 
       // ── Compile if needed ───────────────────────────────────────────
       if (language.compile_cmd) {
+        let compileCmd = language.compile_cmd;
+        if (submission.compiler_options) {
+          compileCmd += ` ${submission.compiler_options}`;
+        }
         const compileResult = await this.runIsolate(boxId, workDir, {
-          cmd: language.compile_cmd,
+          cmd: compileCmd,
           timeLimit: submission.cpu_time_limit + submission.cpu_extra_time,
           wallTimeLimit: submission.wall_time_limit,
           memoryLimit: Math.max(submission.memory_limit, language.min_memory || 0),
           processes: submission.max_processes_and_or_threads,
         });
 
-        if (compileResult.exitCode !== 0) {
+        if (compileResult.exitCode !== 0 || compileResult.isoStatus) {
           return {
             status: getStatusById(6),
-            compile_output: compileResult.stderr || compileResult.stdout,
+            compile_output: compileResult.stderr || compileResult.stdout || compileResult.message,
             time: null,
             wall_time: null,
             memory: null,
             stdout: null,
             stderr: null,
             exit_code: compileResult.exitCode,
-            exit_signal: null,
+            exit_signal: compileResult.exitSignal,
           };
         }
       }
@@ -155,17 +158,17 @@ class IsolateExecutor {
         processes: submission.max_processes_and_or_threads,
       });
 
-      if (compileResult.exitCode !== 0) {
+      if (compileResult.exitCode !== 0 || compileResult.isoStatus) {
         return {
           status: getStatusById(6),
-          compile_output: compileResult.stderr || compileResult.stdout,
+          compile_output: compileResult.stderr || compileResult.stdout || compileResult.message,
           time: null,
           wall_time: null,
           memory: null,
           stdout: null,
           stderr: null,
           exit_code: compileResult.exitCode,
-          exit_signal: null,
+          exit_signal: compileResult.exitSignal,
         };
       }
     } catch { /* no compile script — skip */ }
@@ -209,7 +212,7 @@ class IsolateExecutor {
       '--dir=/tmp=',                       // writable /tmp
       '--env=PATH=/usr/local/bin:/usr/bin:/bin',
       '--env=HOME=/box',
-      '--env=LANG=en_US.UTF-8',
+      '--env=LANG=C.UTF-8',
     ];
 
     if (stdinFile) {
@@ -353,9 +356,9 @@ class IsolateExecutor {
       stdout: stdout || null,
       stderr: stderr || null,
       compile_output: null,
-      time: result.time ? result.time.toFixed(3) : null,
-      wall_time: result.wallTime ? result.wallTime.toFixed(3) : null,
-      memory: result.memory || null,
+      time: result.time != null ? result.time.toFixed(3) : null,
+      wall_time: result.wallTime != null ? result.wallTime.toFixed(3) : null,
+      memory: result.memory != null ? result.memory : null,
       exit_code: result.exitCode,
       exit_signal: result.exitSignal,
       message: result.message,
