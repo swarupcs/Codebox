@@ -14,6 +14,19 @@ languagesList.forEach(lang => {
   languagesById.set(lang.id, lang);
 });
 
+// RapidAPI Judge0 CE Extra language ID aliases.
+// The frontend sends these IDs; map them to our standard configs.
+const RAPIDAPI_ALIASES = {
+  93: javascript,   // JavaScript (Node.js 18.15.0)
+  102: javascript,  // JavaScript (Node.js 22.x)
+  94: typescript,   // TypeScript (5.0.3)
+  92: python,       // Python (3.11.2)
+};
+
+Object.entries(RAPIDAPI_ALIASES).forEach(([aliasId, lang]) => {
+  languagesById.set(Number(aliasId), lang);
+});
+
 /**
  * Get language by ID
  * @param {number} id - Language ID
