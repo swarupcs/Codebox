@@ -12,7 +12,7 @@ const config = {
 
   auth: {
     tokens: (process.env.AUTH_TOKEN || '').split(' ').filter(Boolean),
-    header: process.env.AUTH_HEADER || 'X-Auth-Token',
+    headers: (process.env.AUTH_HEADERS || 'X-Auth-Token x-rapidapi-key').split(' ').filter(Boolean),
   },
 
   execution: {

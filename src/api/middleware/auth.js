@@ -2,7 +2,7 @@ import config from '../../utils/config.js';
 
 /**
  * Authentication middleware
- * Validates X-Auth-Token header against configured tokens
+ * Validates auth token from any of the configured headers (X-Auth-Token, x-rapidapi-key, etc.)
  */
 export function authMiddleware(req, res, next) {
   // Skip auth if no tokens configured
@@ -10,12 +10,16 @@ export function authMiddleware(req, res, next) {
     return next();
   }
 
-  const token = req.get(config.auth.header);
+  let token = null;
+  for (const header of config.auth.headers) {
+    token = req.get(header);
+    if (token) break;
+  }
 
   if (!token) {
     return res.status(401).json({
       error: 'Authentication required',
-      message: `Missing ${config.auth.header} header`,
+      message: 'Missing authentication header',
     });
   }
 
