@@ -30,8 +30,8 @@ RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate \
     && cp isolate isolate-cg-keeper /usr/local/bin/ \
     && chmod 4755 /usr/local/bin/isolate \
     && rm -rf /tmp/isolate \
-    && mkdir -p /usr/local/etc \
-    && printf 'box_root=/var/local/lib/isolate\ncg_root=/sys/fs/cgroup\nfirst_uid=60000\nfirst_gid=60000\nnum_boxes=1000\n' \
+    && mkdir -p /usr/local/etc /var/local/lib/isolate /run/isolate \
+    && printf 'box_root = /var/local/lib/isolate\nlock_root = /run/isolate\ncg_root = /sys/fs/cgroup\nfirst_uid = 60000\nfirst_gid = 60000\nnum_boxes = 1000\nrestricted_init = 0\n' \
        > /usr/local/etc/isolate
 
 # ── 5. Create runner user (for non-isolate fallback) ───────────────────────

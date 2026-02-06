@@ -89,8 +89,6 @@ const JS_PATTERNS = [
   { pattern: /require\s*\(\s*['"]http['"]/, reason: 'http module' },
   { pattern: /require\s*\(\s*['"]https['"]/, reason: 'https module' },
   { pattern: /process\s*\.\s*binding\s*\(/, reason: 'process.binding()' },
-  { pattern: /require\s*\(\s*['"]fs['"]\s*\)/, reason: 'fs module' },
-  { pattern: /from\s+['"]fs['"]/, reason: 'fs module' },
   { pattern: /from\s+['"]child_process['"]/, reason: 'child_process module' },
   { pattern: /from\s+['"]net['"]/, reason: 'net module' },
 ];
