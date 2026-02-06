@@ -44,11 +44,12 @@ class IsolateExecutor {
       const stdinPath = path.join(workDir, '_stdin.txt');
       await fs.writeFile(stdinPath, submission.stdin || '');
 
-      // ── Multi-file program: extract additional files first (they contain compile/run scripts)
-      if (submission.additional_files && (language.id === MULTI_FILE_LANGUAGE_ID || !submission.source_code)) {
+      // ── Extract additional files (ZIP) ──────────────────────────────
+      if (submission.additional_files) {
         await this.extractAdditionalFiles(workDir, submission);
       }
 
+      // ── Multi-file program: language 89 or ZIP with run script ─────
       if (language.id === MULTI_FILE_LANGUAGE_ID) {
         return await this.executeMultiFile(boxId, workDir, submission);
       }
@@ -89,11 +90,6 @@ class IsolateExecutor {
             exit_signal: compileResult.exitSignal,
           };
         }
-      }
-
-      // ── Extract additional files for normal submissions (after compile, before run)
-      if (submission.additional_files && submission.source_code) {
-        await this.extractAdditionalFiles(workDir, submission);
       }
 
       // ── Run ─────────────────────────────────────────────────────────
