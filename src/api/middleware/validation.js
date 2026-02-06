@@ -36,8 +36,36 @@ const submissionSchema = Joi.object({
   compiler_options: Joi.string().allow('', null).default(null),
   command_line_arguments: Joi.string().allow('', null).default(null),
   redirect_stderr_to_stdout: Joi.boolean().default(false),
-  enable_network: Joi.boolean().default(false),
-  callback_url: Joi.string().uri().allow('', null).default(null),
+  enable_network: Joi.any().strip().default(false),
+  callback_url: Joi.string().uri().allow('', null).default(null).custom((value, helpers) => {
+    if (!value) return value;
+    try {
+      const url = new URL(value);
+      // Block internal/private networks (SSRF protection)
+      const hostname = url.hostname;
+      if (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '::1' ||
+        hostname === '0.0.0.0' ||
+        hostname.startsWith('10.') ||
+        hostname.startsWith('172.') ||
+        hostname.startsWith('192.168.') ||
+        hostname === '169.254.169.254' ||
+        hostname.endsWith('.internal') ||
+        hostname.endsWith('.local')
+      ) {
+        return helpers.error('any.invalid');
+      }
+      // Only allow http/https
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return helpers.error('any.invalid');
+      }
+      return value;
+    } catch {
+      return helpers.error('any.invalid');
+    }
+  }),
   additional_files: Joi.string().max(config.execution.maxAdditionalFilesSize)
     .when('language_id', {
       is: MULTI_FILE_LANGUAGE_ID,
@@ -94,21 +122,26 @@ export function validateBatchSubmission(req, res, next) {
 }
 
 /**
- * Sanitize compiler options to prevent command injection
+ * Sanitize compiler options to prevent command injection.
+ * Whitelist approach: only allow alphanumeric, hyphens, dots, equals, slashes,
+ * plus, underscores, and spaces. Reject everything else including newlines.
  */
 export function sanitizeCompilerOptions(options) {
   if (!options) return null;
-  // Remove potentially dangerous characters
-  return options.replace(/[$&;<>`|(){}[\]!#*?~]/g, '');
+  // Strip any character not in the safe set
+  const sanitized = options.replace(/[^a-zA-Z0-9\s\-_.=+/]/g, '');
+  // Collapse multiple spaces and trim
+  return sanitized.replace(/\s+/g, ' ').trim() || null;
 }
 
 /**
- * Sanitize command line arguments
+ * Sanitize command line arguments to prevent command injection.
+ * Same whitelist approach as compiler options.
  */
 export function sanitizeCommandLineArgs(args) {
   if (!args) return null;
-  // Remove potentially dangerous characters but allow common argument patterns
-  return args.replace(/[$&;<>`|(){}[\]!#*?~]/g, '');
+  const sanitized = args.replace(/[^a-zA-Z0-9\s\-_.=+/]/g, '');
+  return sanitized.replace(/\s+/g, ' ').trim() || null;
 }
 
 export default {

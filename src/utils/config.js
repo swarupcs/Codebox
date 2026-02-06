@@ -47,8 +47,8 @@ const config = {
   },
 
   executor: {
-    // 'auto' | 'docker' | 'firecracker'
-    // auto: uses Firecracker if available, otherwise Docker
+    // 'auto' | 'isolate' | 'firecracker' | 'docker'
+    // auto: prefers isolate > firecracker > docker
     type: process.env.EXECUTOR_TYPE || 'auto',
   },
 

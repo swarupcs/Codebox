@@ -174,6 +174,13 @@ class FirecrackerExecutor {
       const zipBuffer = Buffer.from(submission.additional_files, 'base64');
 
       await fs.writeFile(tmpZip, zipBuffer);
+
+      // Check for path traversal attempts before extracting
+      const { stdout: listing } = await execFileAsync('unzip', ['-l', tmpZip]);
+      if (listing.includes('../') || listing.includes('/..')) {
+        throw new Error('ZIP archive contains path traversal entries');
+      }
+
       await execFileAsync('unzip', ['-n', '-qq', tmpZip, '-d', boxDir]);
       await this.runCommand('sudo', ['chown', '-R', '1001:1001', boxDir]);
       await fs.unlink(tmpZip);

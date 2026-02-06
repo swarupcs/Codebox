@@ -1,5 +1,6 @@
 import { getStatusById } from '../../languages/index.js';
 import { getExecutor, getExecutorType } from '../../executor/ExecutorFactory.js';
+import { analyzeCode } from '../../security/codeAnalyzer.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -10,6 +11,31 @@ import logger from '../../utils/logger.js';
 export async function executeCode(submission) {
   const executor = getExecutor();
   const executorType = getExecutorType();
+
+  // Pre-execution security scan
+  const scan = analyzeCode(submission.source_code, submission.language_id);
+  if (scan.rejected) {
+    logger.warn({
+      event: 'code_rejected',
+      token: submission.token,
+      language_id: submission.language_id,
+      reason: scan.reason,
+    });
+
+    return {
+      ...submission,
+      status: getStatusById(6),
+      compile_output: `Rejected: ${scan.reason}`,
+      stdout: null,
+      stderr: null,
+      time: null,
+      wall_time: null,
+      memory: null,
+      exit_code: null,
+      exit_signal: null,
+      finished_at: new Date().toISOString(),
+    };
+  }
 
   logger.info({
     event: 'execution_started',

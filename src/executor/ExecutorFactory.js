@@ -1,39 +1,48 @@
 import fs from 'fs';
+import { execFileSync } from 'child_process';
 import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 import DockerExecutor from './DockerExecutor.js';
 import FirecrackerExecutor from './FirecrackerExecutor.js';
+import IsolateExecutor from './IsolateExecutor.js';
 
 let executorInstance = null;
 let executorType = null;
 
 /**
+ * Detect if isolate is available on the system
+ */
+function isIsolateAvailable() {
+  try {
+    execFileSync('isolate', ['--version'], { stdio: 'pipe', timeout: 5000 });
+    return { available: true, reason: null };
+  } catch {
+    return { available: false, reason: 'isolate binary not found or not working' };
+  }
+}
+
+/**
  * Detect if Firecracker is available on the system
  */
 function isFirecrackerAvailable() {
-  // Check if we're on Linux
   if (process.platform !== 'linux') {
     return { available: false, reason: `Not Linux (${process.platform})` };
   }
 
-  // Check for KVM
   if (!fs.existsSync('/dev/kvm')) {
     return { available: false, reason: '/dev/kvm not found' };
   }
 
-  // Check for firecracker binary
   const fcPaths = ['/usr/local/bin/firecracker', '/usr/bin/firecracker'];
   const fcExists = fcPaths.some(p => fs.existsSync(p));
   if (!fcExists) {
     return { available: false, reason: 'Firecracker binary not found' };
   }
 
-  // Check for kernel
   if (!fs.existsSync('/var/lib/codebox/firecracker/kernels/vmlinux')) {
     return { available: false, reason: 'Firecracker kernel not found' };
   }
 
-  // Check for at least one rootfs
   const rootfsDir = '/var/lib/codebox/firecracker/rootfs';
   if (!fs.existsSync(rootfsDir)) {
     return { available: false, reason: 'Firecracker rootfs directory not found' };
@@ -48,7 +57,8 @@ function isFirecrackerAvailable() {
 }
 
 /**
- * Get the appropriate executor based on configuration and system capabilities
+ * Get the appropriate executor based on configuration and system capabilities.
+ * Priority: isolate > firecracker > docker
  */
 export function getExecutor() {
   if (executorInstance) {
@@ -57,8 +67,14 @@ export function getExecutor() {
 
   const configuredType = config.executor?.type || 'auto';
 
-  if (configuredType === 'firecracker') {
-    // Forced Firecracker mode
+  if (configuredType === 'isolate') {
+    const iso = isIsolateAvailable();
+    if (!iso.available) {
+      throw new Error(`Isolate requested but not available: ${iso.reason}`);
+    }
+    executorType = 'isolate';
+    executorInstance = new IsolateExecutor();
+  } else if (configuredType === 'firecracker') {
     const fc = isFirecrackerAvailable();
     if (!fc.available) {
       throw new Error(`Firecracker requested but not available: ${fc.reason}`);
@@ -66,20 +82,26 @@ export function getExecutor() {
     executorType = 'firecracker';
     executorInstance = new FirecrackerExecutor();
   } else if (configuredType === 'docker') {
-    // Forced Docker mode
     executorType = 'docker';
     executorInstance = new DockerExecutor();
   } else {
-    // Auto-detect: prefer Firecracker if available
-    const fc = isFirecrackerAvailable();
-    if (fc.available) {
-      executorType = 'firecracker';
-      executorInstance = new FirecrackerExecutor();
-      logger.info('Auto-selected Firecracker executor (faster, stronger isolation)');
+    // Auto-detect: prefer isolate > firecracker > docker
+    const iso = isIsolateAvailable();
+    if (iso.available) {
+      executorType = 'isolate';
+      executorInstance = new IsolateExecutor();
+      logger.info('Auto-selected Isolate executor (strongest isolation, precise measurements)');
     } else {
-      executorType = 'docker';
-      executorInstance = new DockerExecutor();
-      logger.info({ reason: fc.reason }, 'Auto-selected Docker executor');
+      const fc = isFirecrackerAvailable();
+      if (fc.available) {
+        executorType = 'firecracker';
+        executorInstance = new FirecrackerExecutor();
+        logger.info('Auto-selected Firecracker executor');
+      } else {
+        executorType = 'docker';
+        executorInstance = new DockerExecutor();
+        logger.info({ isoReason: iso.reason }, 'Auto-selected Docker executor (fallback)');
+      }
     }
   }
 
@@ -92,7 +114,7 @@ export function getExecutor() {
  */
 export function getExecutorType() {
   if (!executorType) {
-    getExecutor(); // Initialize
+    getExecutor();
   }
   return executorType;
 }
@@ -107,16 +129,21 @@ export function getSystemCapabilities() {
   };
 
   const firecracker = isFirecrackerAvailable();
+  const isolate = isIsolateAvailable();
 
   return {
     platform: process.platform,
     arch: process.arch,
+    isolate: {
+      available: isolate.available,
+      reason: isolate.reason,
+    },
     docker,
     firecracker: {
       available: firecracker.available,
       reason: firecracker.reason,
     },
-    recommended: firecracker.available ? 'firecracker' : 'docker',
+    recommended: isolate.available ? 'isolate' : (firecracker.available ? 'firecracker' : 'docker'),
     current: executorType || 'not initialized',
   };
 }

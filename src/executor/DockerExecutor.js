@@ -179,6 +179,8 @@ class DockerExecutor {
     // Use at least the language's minimum memory (e.g. tsc needs ~400MB)
     const effectiveMemory = Math.max(memory_limit, language.min_memory || 0);
 
+    const boxSize = Math.max(Math.ceil(effectiveMemory / 1024), 128); // at least 128MB for /box
+
     const containerConfig = {
       Image: language.image,
       Cmd: ['/bin/sh', '-c', 'sleep 3600'], // Keep container alive
@@ -192,11 +194,23 @@ class DockerExecutor {
         CpuQuota: 100000, // 1 CPU
         PidsLimit: max_processes_and_or_threads,
         NetworkMode: enable_network ? 'bridge' : 'none',
-        ReadonlyRootfs: false, // Need write for compilation
+        ReadonlyRootfs: true,
         SecurityOpt: ['no-new-privileges'],
         CapDrop: ['ALL'],
+        MaskedPaths: [
+          '/etc/passwd', '/etc/shadow', '/etc/group', '/etc/gshadow',
+          '/etc/hostname', '/etc/hosts', '/etc/resolv.conf',
+          '/proc/kcore', '/proc/keys', '/proc/latency_stats',
+          '/proc/timer_list', '/proc/timer_stats', '/proc/sched_debug',
+          '/proc/scsi', '/proc/acpi', '/proc/bus',
+          '/proc/1/environ', '/proc/1/cmdline', '/proc/1/maps',
+          '/sys/firmware', '/sys/devices',
+        ],
+        ReadonlyPaths: ['/proc', '/sys'],
         Tmpfs: {
-          '/tmp': 'rw,noexec,nosuid,size=64m',
+          '/tmp': `rw,noexec,nosuid,size=64m`,
+          '/box': `rw,exec,nosuid,size=${boxSize}m`,
+          '/home': 'rw,noexec,nosuid,size=16m',
         },
         Binds: [],
       },
@@ -234,7 +248,20 @@ class DockerExecutor {
       const tarStream = this.createTarStream('_additional.zip', zipBuffer);
       await container.putArchive(tarStream, { path: '/box' });
 
-      // Extract ZIP inside container and remove it
+      // Check for path traversal and extract ZIP inside container
+      const checkResult = await this.runCommand(
+        container,
+        'unzip -l /box/_additional.zip | grep -q "\\.\\./\\|/\\.\\." && echo TRAVERSAL_FOUND || echo OK',
+        null,
+        10,
+        ''
+      );
+
+      if (checkResult.stdout.trim().includes('TRAVERSAL_FOUND')) {
+        await this.runCommand(container, 'rm /box/_additional.zip', null, 5, '');
+        throw new Error('ZIP archive contains path traversal entries');
+      }
+
       const extractResult = await this.runCommand(
         container,
         'unzip -n -qq /box/_additional.zip -d /box && rm /box/_additional.zip',

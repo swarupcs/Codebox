@@ -19,17 +19,14 @@ services:
   api:
     build:
       context: .
-      dockerfile: docker/executor/Dockerfile
+      dockerfile: docker/api/Dockerfile
     environment:
       - NODE_ENV=production
       - REDIS_URL=redis://redis:6379
       - AUTH_TOKEN=${AUTH_TOKEN}
-      - EXECUTOR_TYPE=${EXECUTOR_TYPE:-auto}
       - PORT=3000
     depends_on:
       - redis
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     restart: always
     deploy:
       resources:
@@ -39,22 +36,21 @@ services:
   worker:
     build:
       context: .
-      dockerfile: docker/executor/Dockerfile
+      dockerfile: docker/worker/Dockerfile
     command: node src/queue/worker.js
+    privileged: true
     environment:
       - NODE_ENV=production
       - REDIS_URL=redis://redis:6379
-      - EXECUTOR_TYPE=${EXECUTOR_TYPE:-auto}
+      - EXECUTOR_TYPE=isolate
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-4}
     depends_on:
       - redis
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
     restart: always
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 2G
 
   redis:
     image: redis:7-alpine
