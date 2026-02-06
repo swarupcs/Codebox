@@ -62,7 +62,7 @@ services:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction
     restart: always
     deploy:
       resources:
