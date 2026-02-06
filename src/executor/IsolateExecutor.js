@@ -31,8 +31,8 @@ class IsolateExecutor {
       const { stdout: initOut } = await execFileAsync('isolate', [
         '--init', `--box-id=${boxId}`, '--cg',
       ]);
-      boxDir = initOut.trim();                     // e.g. /var/local/lib/isolate/0/box
-      const workDir = boxDir;                      // --init already returns the /box path
+      boxDir = initOut.trim();                     // e.g. /var/local/lib/isolate/0
+      const workDir = path.join(boxDir, 'box');    // host path: <root>/box/ maps to /box inside sandbox
 
       // ── Write source code (skip for multi-file) ─────────────────────
       if (language.id !== MULTI_FILE_LANGUAGE_ID && submission.source_code) {
@@ -194,20 +194,26 @@ class IsolateExecutor {
     const { cmd, stdinFile, timeLimit, wallTimeLimit, memoryLimit, processes } = opts;
 
     const metaPath = `/tmp/isolate-meta-${boxId}.txt`;
-    const stdoutPath = path.join(workDir, '_stdout.txt');
-    const stderrPath = path.join(workDir, '_stderr.txt');
+
+    // Sandbox-relative paths (used by isolate flags)
+    const sandboxStdout = '/box/_stdout.txt';
+    const sandboxStderr = '/box/_stderr.txt';
+
+    // Host paths (for reading results after execution)
+    const hostStdoutPath = path.join(workDir, '_stdout.txt');
+    const hostStderrPath = path.join(workDir, '_stderr.txt');
 
     const args = [
       `--box-id=${boxId}`,
       '--cg',
       `--cg-mem=${memoryLimit}`,           // cgroup memory limit (KB)
-      `--meta=${metaPath}`,
+      `--meta=${metaPath}`,                // host path (written by parent process)
       `--time=${timeLimit}`,
       `--wall-time=${wallTimeLimit}`,
       `--processes=${processes}`,
       `--fsize=${1024}`,                    // max output file size (KB)
-      `--stdout=${stdoutPath}`,
-      `--stderr=${stderrPath}`,
+      `--stdout=${sandboxStdout}`,          // sandbox path
+      `--stderr=${sandboxStderr}`,          // sandbox path
       '--dir=/etc:noexec',                 // read-only /etc (Java, Python need it)
       '--dir=/tmp=',                       // writable /tmp
       '--env=PATH=/usr/local/bin:/usr/bin:/bin',
@@ -216,7 +222,7 @@ class IsolateExecutor {
     ];
 
     if (stdinFile) {
-      args.push(`--stdin=${stdinFile}`);
+      args.push(`--stdin=/box/_stdin.txt`);  // sandbox path (file written to workDir on host)
     }
 
     args.push('--run', '--', '/bin/sh', '-c', `cd /box && ${cmd}`);
@@ -229,11 +235,11 @@ class IsolateExecutor {
       // isolate exits non-zero on TLE, RE, etc. — that's normal
     }
 
-    // Read outputs
+    // Read outputs from HOST paths
     let stdout = '';
     let stderr = '';
-    try { stdout = await fs.readFile(stdoutPath, 'utf-8'); } catch { /* empty */ }
-    try { stderr = await fs.readFile(stderrPath, 'utf-8'); } catch { /* empty */ }
+    try { stdout = await fs.readFile(hostStdoutPath, 'utf-8'); } catch { /* empty */ }
+    try { stderr = await fs.readFile(hostStderrPath, 'utf-8'); } catch { /* empty */ }
 
     // Parse meta file (isolate's precise measurements)
     const meta = await this.parseMeta(metaPath);
