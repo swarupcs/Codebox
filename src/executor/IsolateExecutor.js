@@ -302,7 +302,7 @@ class IsolateExecutor {
       return {
         time: meta.time ? parseFloat(meta.time) : null,
         wallTime: meta['time-wall'] ? parseFloat(meta['time-wall']) : null,
-        memory: meta['cg-mem'] ? parseInt(meta['cg-mem']) : (meta['max-rss'] ? parseInt(meta['max-rss']) : null),
+        memory: meta['max-rss'] ? parseInt(meta['max-rss']) : (meta['cg-mem'] ? parseInt(meta['cg-mem']) : null),
         exitCode: meta.exitcode ? parseInt(meta.exitcode) : 0,
         exitSignal: meta.exitsig ? parseInt(meta.exitsig) : null,
         isoStatus: meta.status || null,   // RE, SG, TO, XX
