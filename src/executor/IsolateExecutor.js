@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { promisify } from 'util';
 import logger from '../utils/logger.js';
+import config from '../utils/config.js';
 import { getStatusById } from '../languages/index.js';
 
 const execFileAsync = promisify(execFile);
@@ -61,8 +62,8 @@ class IsolateExecutor {
         }
         const compileResult = await this.runIsolate(boxId, workDir, {
           cmd: compileCmd,
-          timeLimit: submission.cpu_time_limit + submission.cpu_extra_time,
-          wallTimeLimit: submission.wall_time_limit,
+          timeLimit: config.execution.compileCpuTimeLimit,
+          wallTimeLimit: config.execution.compileWallTimeLimit,
           memoryLimit: Math.max(submission.memory_limit, language.min_memory || 0),
           processes: submission.max_processes_and_or_threads,
         });
@@ -152,8 +153,8 @@ class IsolateExecutor {
       await fs.access(path.join(workDir, 'compile'));
       const compileResult = await this.runIsolate(boxId, workDir, {
         cmd: 'bash /box/compile',
-        timeLimit: submission.cpu_time_limit + submission.cpu_extra_time,
-        wallTimeLimit: submission.wall_time_limit,
+        timeLimit: config.execution.compileCpuTimeLimit,
+        wallTimeLimit: config.execution.compileWallTimeLimit,
         memoryLimit: Math.max(submission.memory_limit, 512000),
         processes: submission.max_processes_and_or_threads,
       });

@@ -26,6 +26,8 @@ const config = {
     maxSourceSize: parseInt(process.env.MAX_SOURCE_SIZE) || 65536,
     maxAdditionalFilesSize: parseInt(process.env.MAX_ADDITIONAL_FILES_SIZE) || 2097152, // 2MB base64
     defaultStackLimit: parseInt(process.env.DEFAULT_STACK_LIMIT) || 64000,
+    compileCpuTimeLimit: parseInt(process.env.COMPILE_CPU_TIME_LIMIT) || 15,
+    compileWallTimeLimit: parseInt(process.env.COMPILE_WALL_TIME_LIMIT) || 30,
   },
 
   worker: {
