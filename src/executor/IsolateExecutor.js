@@ -105,6 +105,7 @@ class IsolateExecutor {
         wallTimeLimit: submission.wall_time_limit,
         memoryLimit: submission.memory_limit,
         processes: submission.max_processes_and_or_threads,
+        fsize: submission.max_file_size || 1024,
       });
 
       return this.buildResult(result, submission);
@@ -205,6 +206,7 @@ class IsolateExecutor {
       wallTimeLimit: submission.wall_time_limit,
       memoryLimit: submission.memory_limit,
       processes: submission.max_processes_and_or_threads,
+      fsize: submission.max_file_size || 1024,
     });
 
     return this.buildResult(result, submission);
@@ -215,7 +217,7 @@ class IsolateExecutor {
    * Returns { stdout, stderr, time, wallTime, memory, exitCode, exitSignal, isoStatus }.
    */
   async runIsolate(boxId, workDir, opts) {
-    const { cmd, stdinFile, timeLimit, wallTimeLimit, memoryLimit, processes } = opts;
+    const { cmd, stdinFile, timeLimit, wallTimeLimit, memoryLimit, processes, fsize = 10240 } = opts;
 
     const metaPath = `/tmp/isolate-meta-${boxId}.txt`;
 
@@ -235,7 +237,7 @@ class IsolateExecutor {
       `--time=${timeLimit}`,
       `--wall-time=${wallTimeLimit}`,
       `--processes=${processes}`,
-      `--fsize=${1024}`,                    // max output file size (KB)
+      `--fsize=${fsize}`,                     // max output file size (KB)
       `--stdout=${sandboxStdout}`,          // sandbox path
       `--stderr=${sandboxStderr}`,          // sandbox path
       '--dir=/etc:noexec',                 // read-only /etc (Java, Python need it)
