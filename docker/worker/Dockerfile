@@ -23,11 +23,14 @@ RUN curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
 # ── 3. TypeScript compiler ──────────────────────────────────────────────────
 RUN npm install -g typescript
 
-# ── 4. Compile and install isolate ──────────────────────────────────────────
+# ── 4. Compile and install isolate (binaries only, skip man pages) ─────────
 RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate \
     && cd /tmp/isolate \
-    && make \
-    && make install \
+    && make isolate isolate-cg-keeper \
+    && cp isolate isolate-cg-keeper /usr/local/bin/ \
+    && chmod 4755 /usr/local/bin/isolate \
+    && mkdir -p /usr/local/etc \
+    && cp default.cf /usr/local/etc/isolate \
     && rm -rf /tmp/isolate
 
 # ── 5. Create runner user (for non-isolate fallback) ───────────────────────
