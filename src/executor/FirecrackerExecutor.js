@@ -243,7 +243,8 @@ class FirecrackerExecutor {
    * Create Firecracker VM configuration
    */
   createConfig(vmId, rootfsPath, submission) {
-    const memSizeMib = Math.ceil(submission.memory_limit / 1024); // Convert KB to MB
+    const effectiveMemory = Math.max(submission.memory_limit, submission.language.min_memory || 0);
+    const memSizeMib = Math.ceil(effectiveMemory / 1024); // Convert KB to MB
 
     return {
       'boot-source': {

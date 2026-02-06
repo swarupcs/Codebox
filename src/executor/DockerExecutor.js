@@ -176,6 +176,9 @@ class DockerExecutor {
   async createContainer(submission) {
     const { language, memory_limit, max_processes_and_or_threads, enable_network } = submission;
 
+    // Use at least the language's minimum memory (e.g. tsc needs ~400MB)
+    const effectiveMemory = Math.max(memory_limit, language.min_memory || 0);
+
     const containerConfig = {
       Image: language.image,
       Cmd: ['/bin/sh', '-c', 'sleep 3600'], // Keep container alive
@@ -183,8 +186,8 @@ class DockerExecutor {
       // User is set in Dockerfile for each language image
       NetworkDisabled: !enable_network,
       HostConfig: {
-        Memory: memory_limit * 1024, // Convert KB to bytes
-        MemorySwap: memory_limit * 1024, // Disable swap
+        Memory: effectiveMemory * 1024, // Convert KB to bytes
+        MemorySwap: effectiveMemory * 1024, // Disable swap
         CpuPeriod: 100000,
         CpuQuota: 100000, // 1 CPU
         PidsLimit: max_processes_and_or_threads,
