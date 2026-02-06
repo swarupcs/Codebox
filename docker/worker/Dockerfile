@@ -30,8 +30,7 @@ RUN curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
     && rm -rf /var/lib/apt/lists/*
 
 # ── 3. TypeScript compiler ──────────────────────────────────────────────────
-# Only install tsc — @types/node comes from platform's additional_files ZIP
-RUN npm install -g typescript
+RUN npm install -g typescript @types/node@20
 
 # ── 3a. C++ libraries (nlohmann/json) ─────────────────────────────────────
 RUN curl -fsSL https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp \
