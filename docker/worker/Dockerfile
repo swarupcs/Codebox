@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     ca-certificates curl gnupg \
     unzip bash time \
-    make git libcap-dev \
+    make git pkg-config libcap-dev libsystemd-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ── 2. Node.js 20 (app runtime) ────────────────────────────────────────────
