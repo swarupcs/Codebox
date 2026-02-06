@@ -1,6 +1,7 @@
 import Joi from 'joi';
 import config from '../../utils/config.js';
 import { isValidLanguageId } from '../../languages/index.js';
+import logger from '../../utils/logger.js';
 
 // Multi-file program language ID
 const MULTI_FILE_LANGUAGE_ID = 89;
@@ -110,6 +111,13 @@ export function validateBatchSubmission(req, res, next) {
   });
 
   if (error) {
+    logger.warn({
+      event: 'batch_validation_error',
+      message: error.details.map(d => d.message).join(', '),
+      details: error.details,
+      submissionCount: req.body?.submissions?.length,
+      languageIds: req.body?.submissions?.map(s => s.language_id),
+    });
     return res.status(422).json({
       error: 'Validation Error',
       message: error.details.map(d => d.message).join(', '),
