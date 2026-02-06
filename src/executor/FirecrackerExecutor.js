@@ -2,14 +2,12 @@ import { spawn, execFile } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { gunzip } from 'zlib';
 import { promisify } from 'util';
 import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 import { getStatusById } from '../languages/index.js';
 import ResultParser from './ResultParser.js';
 
-const gunzipAsync = promisify(gunzip);
 const execFileAsync = promisify(execFile);
 
 const FC_BASE_DIR = '/var/lib/codebox/firecracker';
@@ -17,12 +15,16 @@ const KERNEL_PATH = `${FC_BASE_DIR}/kernels/vmlinux`;
 const ROOTFS_DIR = `${FC_BASE_DIR}/rootfs`;
 const SOCKETS_DIR = `${FC_BASE_DIR}/sockets`;
 
+const MULTI_FILE_LANGUAGE_ID = 89;
+
 // Map language images to rootfs names
 const IMAGE_TO_ROOTFS = {
   'codebox/python:3.8': 'python',
   'codebox/node:18': 'node',
   'codebox/gcc:9': 'gcc',
   'codebox/java:17': 'java',
+  'codebox/typescript:5': 'typescript',
+  'codebox/multi:latest': 'multi',
 };
 
 class FirecrackerExecutor {
@@ -130,10 +132,12 @@ class FirecrackerExecutor {
     await this.runCommand('sudo', ['mount', '-o', 'loop', overlayPath, mountDir]);
 
     try {
-      // Write source code
-      const sourcePath = `${mountDir}/box/${language.source_file}`;
-      await fs.writeFile(sourcePath, source_code);
-      await this.runCommand('sudo', ['chown', '1001:1001', sourcePath]);
+      // Write source code (skip for multi-file programs)
+      if (language.id !== MULTI_FILE_LANGUAGE_ID && source_code) {
+        const sourcePath = `${mountDir}/box/${language.source_file}`;
+        await fs.writeFile(sourcePath, source_code);
+        await this.runCommand('sudo', ['chown', '1001:1001', sourcePath]);
+      }
 
       // Write stdin if provided
       if (stdin) {
@@ -142,7 +146,7 @@ class FirecrackerExecutor {
         await this.runCommand('sudo', ['chown', '1001:1001', stdinPath]);
       }
 
-      // Extract additional files (base64-encoded tar.gz) if provided
+      // Extract additional files (base64-encoded ZIP) if provided
       if (submission.additional_files) {
         await this.writeAdditionalFiles(`${mountDir}/box`, submission);
       }
@@ -161,35 +165,27 @@ class FirecrackerExecutor {
   }
 
   /**
-   * Write additional files (base64-encoded tar.gz) to the box directory
+   * Write additional files (base64-encoded ZIP) to the box directory
    */
   async writeAdditionalFiles(boxDir, submission) {
-    const tmpTar = `${boxDir}/_additional.tar`;
+    const tmpZip = `${boxDir}/_additional.zip`;
 
     try {
-      const gzBuffer = Buffer.from(submission.additional_files, 'base64');
+      const zipBuffer = Buffer.from(submission.additional_files, 'base64');
 
-      // Try gunzip first (tar.gz), fall back to raw tar
-      let tarBuffer;
-      try {
-        tarBuffer = await gunzipAsync(gzBuffer);
-      } catch {
-        tarBuffer = gzBuffer;
-      }
-
-      await fs.writeFile(tmpTar, tarBuffer);
-      await execFileAsync('tar', ['xf', tmpTar, '-C', boxDir]);
+      await fs.writeFile(tmpZip, zipBuffer);
+      await execFileAsync('unzip', ['-n', '-qq', tmpZip, '-d', boxDir]);
       await this.runCommand('sudo', ['chown', '-R', '1001:1001', boxDir]);
-      await fs.unlink(tmpTar);
+      await fs.unlink(tmpZip);
 
       logger.info({
         event: 'additional_files_extracted',
         token: submission.token,
-        size: gzBuffer.length,
+        size: zipBuffer.length,
       });
     } catch (error) {
       // Clean up temp file on failure
-      try { await fs.unlink(tmpTar); } catch {}
+      try { await fs.unlink(tmpZip); } catch {}
       logger.error({
         event: 'additional_files_extract_failed',
         token: submission.token,
@@ -210,18 +206,35 @@ class FirecrackerExecutor {
     script += 'cd /box\n';
     script += 'exec 2>&1\n'; // Redirect stderr to stdout for capture
 
-    // Compilation step if needed
-    if (language.compile_cmd) {
-      script += `${language.compile_cmd} 2>/box/compile_error.txt\n`;
-      script += 'if [ $? -ne 0 ]; then\n';
-      script += '  cat /box/compile_error.txt\n';
-      script += '  exit 100\n'; // Special exit code for compilation error
+    if (language.id === MULTI_FILE_LANGUAGE_ID) {
+      // Multi-file program: use compile/run scripts from ZIP
+      script += 'if [ ! -f /box/run ]; then\n';
+      script += '  echo "Multi-file program requires a \\"run\\" script in the ZIP archive" >&2\n';
+      script += '  exit 100\n';
       script += 'fi\n';
-    }
+      script += 'if [ -f /box/compile ]; then\n';
+      script += '  bash /box/compile 2>/box/compile_error.txt\n';
+      script += '  if [ $? -ne 0 ]; then\n';
+      script += '    cat /box/compile_error.txt\n';
+      script += '    exit 100\n';
+      script += '  fi\n';
+      script += 'fi\n';
+      script += `timeout ${submission.wall_time_limit} bash /box/run ${stdinRedirect}\n`;
+      script += 'exit $?\n';
+    } else {
+      // Standard language: use compile_cmd/run_cmd from language config
+      if (language.compile_cmd) {
+        script += `${language.compile_cmd} 2>/box/compile_error.txt\n`;
+        script += 'if [ $? -ne 0 ]; then\n';
+        script += '  cat /box/compile_error.txt\n';
+        script += '  exit 100\n'; // Special exit code for compilation error
+        script += 'fi\n';
+      }
 
-    // Run step
-    script += `timeout ${submission.wall_time_limit} ${language.run_cmd} ${stdinRedirect}\n`;
-    script += 'exit $?\n';
+      // Run step
+      script += `timeout ${submission.wall_time_limit} ${language.run_cmd} ${stdinRedirect}\n`;
+      script += 'exit $?\n';
+    }
 
     return script;
   }

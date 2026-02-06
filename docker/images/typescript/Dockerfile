@@ -1,22 +1,20 @@
-FROM python:3.8-slim
+FROM node:18-slim
 
-# Create non-root user (use UID 1001 to avoid conflicts)
-RUN useradd -m -u 1001 -s /bin/bash runner
-
-# Create working directory
-RUN mkdir -p /box && chown runner:runner /box
-
+# Node image already has user 'node' with UID 1000, use it
 # Install additional tools
 RUN apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/*
 
-# Install common packages
-RUN pip install --no-cache-dir numpy
+# Install TypeScript globally
+RUN npm install -g typescript
+
+# Create working directory
+RUN mkdir -p /box && chown node:node /box
 
 # Set working directory
 WORKDIR /box
 
 # Switch to non-root user
-USER runner
+USER node
 
 # Keep container alive (will be overridden at runtime)
 CMD ["sleep", "infinity"]

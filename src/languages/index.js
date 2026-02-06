@@ -3,10 +3,12 @@ import javascript from './javascript.js';
 import cpp from './cpp.js';
 import c from './c.js';
 import java from './java.js';
+import multi from './multi.js';
+import typescript from './typescript.js';
 
 // Map of all supported languages by ID
 const languagesById = new Map();
-const languagesList = [python, javascript, cpp, c, java];
+const languagesList = [python, javascript, cpp, c, java, multi, typescript];
 
 languagesList.forEach(lang => {
   languagesById.set(lang.id, lang);

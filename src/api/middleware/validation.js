@@ -2,9 +2,17 @@ import Joi from 'joi';
 import config from '../../utils/config.js';
 import { isValidLanguageId } from '../../languages/index.js';
 
+// Multi-file program language ID
+const MULTI_FILE_LANGUAGE_ID = 89;
+
 // Submission validation schema
 const submissionSchema = Joi.object({
-  source_code: Joi.string().required().max(config.execution.maxSourceSize),
+  source_code: Joi.string().max(config.execution.maxSourceSize)
+    .when('language_id', {
+      is: MULTI_FILE_LANGUAGE_ID,
+      then: Joi.string().allow('', null).default(null),
+      otherwise: Joi.string().required(),
+    }),
   language_id: Joi.number().integer().required().custom((value, helpers) => {
     if (!isValidLanguageId(value)) {
       return helpers.error('any.invalid');
@@ -30,7 +38,12 @@ const submissionSchema = Joi.object({
   redirect_stderr_to_stdout: Joi.boolean().default(false),
   enable_network: Joi.boolean().default(false),
   callback_url: Joi.string().uri().allow('', null).default(null),
-  additional_files: Joi.string().allow('', null).max(config.execution.maxAdditionalFilesSize).default(null),
+  additional_files: Joi.string().max(config.execution.maxAdditionalFilesSize)
+    .when('language_id', {
+      is: MULTI_FILE_LANGUAGE_ID,
+      then: Joi.string().required(),
+      otherwise: Joi.string().allow('', null).default(null),
+    }),
 });
 
 // Batch submission validation

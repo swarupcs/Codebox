@@ -1,13 +1,11 @@
 import Docker from 'dockerode';
 import { Readable } from 'stream';
-import { gunzip } from 'zlib';
-import { promisify } from 'util';
 import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 import { getStatusById } from '../languages/index.js';
 import ResultParser from './ResultParser.js';
 
-const gunzipAsync = promisify(gunzip);
+const MULTI_FILE_LANGUAGE_ID = 89;
 
 class DockerExecutor {
   constructor() {
@@ -31,10 +29,16 @@ class DockerExecutor {
       // Start container
       await container.start();
 
+      if (language.id === MULTI_FILE_LANGUAGE_ID) {
+        // Multi-file program: extract ZIP, then run compile/run scripts
+        await this.copyAdditionalFiles(container, submission);
+        return await this.executeMultiFile(container, submission);
+      }
+
       // Copy source code to container
       await this.copySourceCode(container, submission);
 
-      // Copy additional files (e.g., JSON parser headers/libs) if provided
+      // Copy additional files if provided
       if (submission.additional_files) {
         await this.copyAdditionalFiles(container, submission);
       }
@@ -109,6 +113,64 @@ class DockerExecutor {
   }
 
   /**
+   * Execute a multi-file program (language_id 89)
+   */
+  async executeMultiFile(container, submission) {
+    // Verify /box/run script exists
+    const checkRun = await this.runCommand(container, 'test -f /box/run', null, 5, '');
+    if (checkRun.exitCode !== 0) {
+      return {
+        status: getStatusById(6), // Compilation Error (used for setup errors)
+        compile_output: 'Multi-file program requires a "run" script in the ZIP archive',
+        time: null,
+        wall_time: null,
+        memory: null,
+        stdout: null,
+        stderr: null,
+        exit_code: null,
+        exit_signal: null,
+      };
+    }
+
+    // If /box/compile exists, run it
+    const checkCompile = await this.runCommand(container, 'test -f /box/compile', null, 5, '');
+    if (checkCompile.exitCode === 0) {
+      const compileResult = await this.runCommand(
+        container,
+        'bash /box/compile',
+        null,
+        submission.cpu_time_limit + submission.cpu_extra_time,
+        ''
+      );
+
+      if (compileResult.exitCode !== 0) {
+        return {
+          status: getStatusById(6), // Compilation Error
+          compile_output: compileResult.stderr || compileResult.stdout,
+          time: null,
+          wall_time: null,
+          memory: null,
+          stdout: null,
+          stderr: null,
+          exit_code: compileResult.exitCode,
+          exit_signal: null,
+        };
+      }
+    }
+
+    // Run the program
+    const result = await this.runCommand(
+      container,
+      'bash /box/run',
+      null,
+      submission.wall_time_limit,
+      submission.stdin
+    );
+
+    return this.resultParser.parse(result, submission);
+  }
+
+  /**
    * Create a Docker container with security limits
    */
   async createContainer(submission) {
@@ -157,29 +219,35 @@ class DockerExecutor {
   }
 
   /**
-   * Copy additional files (base64-encoded tar.gz) into the container
+   * Copy additional files (base64-encoded ZIP) into the container
    */
   async copyAdditionalFiles(container, submission) {
     const { additional_files } = submission;
 
     try {
-      const gzBuffer = Buffer.from(additional_files, 'base64');
+      const zipBuffer = Buffer.from(additional_files, 'base64');
 
-      // Try gunzip first (tar.gz), fall back to raw tar
-      let tarBuffer;
-      try {
-        tarBuffer = await gunzipAsync(gzBuffer);
-      } catch {
-        // Not gzipped — treat as raw tar
-        tarBuffer = gzBuffer;
+      // Copy ZIP file into container via tar stream
+      const tarStream = this.createTarStream('_additional.zip', zipBuffer);
+      await container.putArchive(tarStream, { path: '/box' });
+
+      // Extract ZIP inside container and remove it
+      const extractResult = await this.runCommand(
+        container,
+        'unzip -n -qq /box/_additional.zip -d /box && rm /box/_additional.zip',
+        null,
+        10,
+        ''
+      );
+
+      if (extractResult.exitCode !== 0) {
+        throw new Error(extractResult.stderr || 'Failed to extract ZIP archive');
       }
-
-      await container.putArchive(Readable.from(tarBuffer), { path: '/box' });
 
       logger.info({
         event: 'additional_files_copied',
         token: submission.token,
-        size: gzBuffer.length,
+        size: zipBuffer.length,
       });
     } catch (error) {
       logger.error({
@@ -195,7 +263,7 @@ class DockerExecutor {
    * Create a simple tar stream with a single file
    */
   createTarStream(fileName, content) {
-    const contentBuffer = Buffer.from(content, 'utf-8');
+    const contentBuffer = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8');
     const fileNameBuffer = Buffer.from(fileName);
 
     // TAR header (512 bytes)
@@ -261,7 +329,6 @@ class DockerExecutor {
    */
   async runCommand(container, command, extraOptions, timeoutSecs, stdin) {
     const startTime = Date.now();
-    const startMemory = process.memoryUsage().heapUsed;
 
     // Create exec instance
     const exec = await container.exec({

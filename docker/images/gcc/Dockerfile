@@ -9,6 +9,7 @@ RUN mkdir -p /box && chown runner:runner /box
 # Install additional tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     time \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory

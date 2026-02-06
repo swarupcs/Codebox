@@ -23,6 +23,12 @@ docker build -t codebox/gcc:9 "$PROJECT_DIR/docker/images/gcc/"
 echo "Building Java 17 image..."
 docker build -t codebox/java:17 "$PROJECT_DIR/docker/images/java/"
 
+echo "Building TypeScript 5 image..."
+docker build -t codebox/typescript:5 "$PROJECT_DIR/docker/images/typescript/"
+
+echo "Building Multi-runtime image..."
+docker build -t codebox/multi:latest "$PROJECT_DIR/docker/images/multi/"
+
 echo ""
 echo "All images built successfully!"
 echo ""
