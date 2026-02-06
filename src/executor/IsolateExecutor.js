@@ -129,13 +129,19 @@ class IsolateExecutor {
    * Multi-file program (language_id 89): compile + run scripts from ZIP.
    */
   async executeMultiFile(boxId, workDir, submission) {
-    // Verify run script exists
-    try {
-      await fs.access(path.join(workDir, 'run'));
-    } catch {
+    // Verify run script exists (check both 'run' and 'run.sh')
+    let runScript = null;
+    for (const name of ['run', 'run.sh']) {
+      try {
+        await fs.access(path.join(workDir, name));
+        runScript = name;
+        break;
+      } catch { /* try next */ }
+    }
+    if (!runScript) {
       return {
         status: getStatusById(6),
-        compile_output: 'Multi-file program requires a "run" script in the ZIP archive',
+        compile_output: 'Multi-file program requires a "run" (or "run.sh") script in the ZIP archive',
         time: null,
         wall_time: null,
         memory: null,
@@ -148,11 +154,19 @@ class IsolateExecutor {
 
     const stdinPath = path.join(workDir, '_stdin.txt');
 
-    // Optional compile step
-    try {
-      await fs.access(path.join(workDir, 'compile'));
+    // Optional compile step (check both 'compile' and 'compile.sh')
+    let compileScript = null;
+    for (const name of ['compile', 'compile.sh']) {
+      try {
+        await fs.access(path.join(workDir, name));
+        compileScript = name;
+        break;
+      } catch { /* try next */ }
+    }
+
+    if (compileScript) {
       const compileResult = await this.runIsolate(boxId, workDir, {
-        cmd: 'bash /box/compile',
+        cmd: `bash /box/${compileScript}`,
         timeLimit: config.execution.compileCpuTimeLimit,
         wallTimeLimit: config.execution.compileWallTimeLimit,
         memoryLimit: Math.max(submission.memory_limit, 512000),
@@ -172,11 +186,11 @@ class IsolateExecutor {
           exit_signal: compileResult.exitSignal,
         };
       }
-    } catch { /* no compile script — skip */ }
+    }
 
     // Run
     const result = await this.runIsolate(boxId, workDir, {
-      cmd: 'bash /box/run',
+      cmd: `bash /box/${runScript}`,
       stdinFile: stdinPath,
       timeLimit: submission.cpu_time_limit,
       wallTimeLimit: submission.wall_time_limit,
