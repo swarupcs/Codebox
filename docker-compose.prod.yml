@@ -25,13 +25,15 @@ services:
       - REDIS_URL=redis://redis:6379
       - AUTH_TOKEN=${AUTH_TOKEN}
       - PORT=3000
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-200}
     depends_on:
       - redis
     restart: always
     deploy:
       resources:
         limits:
-          memory: 512M
+          cpus: '0.5'
+          memory: 256M
 
   worker:
     build:
@@ -43,24 +45,29 @@ services:
       - NODE_ENV=production
       - REDIS_URL=redis://redis:6379
       - EXECUTOR_TYPE=isolate
-      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-4}
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-6}
+      - DEFAULT_MEMORY_LIMIT=${DEFAULT_MEMORY_LIMIT:-256000}
+      - MAX_MEMORY_LIMIT=${MAX_MEMORY_LIMIT:-512000}
+      - RESULT_CACHE_TTL=${RESULT_CACHE_TTL:-1800}
     depends_on:
       - redis
     restart: always
     deploy:
       resources:
         limits:
-          memory: 2G
+          cpus: '3.5'
+          memory: 10G
 
   redis:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     restart: always
     deploy:
       resources:
         limits:
+          cpus: '0.5'
           memory: 512M
 
   prometheus:
