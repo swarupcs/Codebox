@@ -69,6 +69,16 @@ class IsolateExecutor {
         });
 
         if (compileResult.exitCode !== 0 || compileResult.isoStatus) {
+          logger.info({
+            event: 'compile_failed_debug',
+            token: submission.token,
+            compileCmd,
+            stderr: compileResult.stderr?.slice(0, 500),
+            stdout: compileResult.stdout?.slice(0, 500),
+            exitCode: compileResult.exitCode,
+            isoStatus: compileResult.isoStatus,
+            message: compileResult.message,
+          });
           return {
             status: getStatusById(6),
             compile_output: compileResult.stderr || compileResult.stdout || compileResult.message,
