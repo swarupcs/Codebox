@@ -80,6 +80,22 @@ class FirecrackerExecutor {
         fcProcess
       );
 
+      // Handle compilation error (exit code 100 from our script)
+      if (result.exitCode === 100) {
+        return {
+          status: getStatusById(6),
+          compile_output: result.stdout || result.stderr || 'Compilation failed',
+          time: null,
+          wall_time: null,
+          memory: null,
+          stdout: null,
+          stderr: null,
+          exit_code: result.exitCode,
+          exit_signal: null,
+          message: null,
+        };
+      }
+
       return this.resultParser.parse(result, submission);
     } catch (error) {
       logger.error({
@@ -132,28 +148,42 @@ class FirecrackerExecutor {
     await this.runCommand('sudo', ['mount', '-o', 'loop', overlayPath, mountDir]);
 
     try {
-      // Write source code (skip for multi-file programs)
-      if (language.id !== MULTI_FILE_LANGUAGE_ID && source_code) {
-        const sourcePath = `${mountDir}/box/${language.source_file}`;
+      const boxDir = `${mountDir}/box`;
+
+      // Write source code (skip for multi-file or empty source)
+      if (source_code && language.source_file) {
+        const sourcePath = `${boxDir}/${language.source_file}`;
         await fs.writeFile(sourcePath, source_code);
         await this.runCommand('sudo', ['chown', '1001:1001', sourcePath]);
       }
 
       // Write stdin if provided
       if (stdin) {
-        const stdinPath = `${mountDir}/box/stdin.txt`;
+        const stdinPath = `${boxDir}/stdin.txt`;
         await fs.writeFile(stdinPath, stdin);
         await this.runCommand('sudo', ['chown', '1001:1001', stdinPath]);
       }
 
       // Extract additional files (base64-encoded ZIP) if provided
       if (submission.additional_files) {
-        await this.writeAdditionalFiles(`${mountDir}/box`, submission);
+        await this.writeAdditionalFiles(boxDir, submission);
       }
 
-      // Write execution script
-      const script = this.createExecutionScript(submission);
-      const scriptPath = `${mountDir}/box/run.sh`;
+      // Auto-detect multi-file mode: language 89, or empty source + additional_files with run script
+      let useMultiFile = language.id === MULTI_FILE_LANGUAGE_ID;
+      if (!useMultiFile && !source_code && submission.additional_files) {
+        for (const name of ['run', 'run.sh']) {
+          try {
+            await fs.access(path.join(boxDir, name));
+            useMultiFile = true;
+            break;
+          } catch { /* try next */ }
+        }
+      }
+
+      // Write execution script (named _exec.sh to avoid overwriting user's run.sh)
+      const script = this.createExecutionScript(submission, useMultiFile);
+      const scriptPath = `${boxDir}/_exec.sh`;
       await fs.writeFile(scriptPath, script);
       await this.runCommand('sudo', ['chmod', '+x', scriptPath]);
       await this.runCommand('sudo', ['chown', '1001:1001', scriptPath]);
@@ -205,7 +235,7 @@ class FirecrackerExecutor {
   /**
    * Create the execution script that runs inside the VM
    */
-  createExecutionScript(submission) {
+  createExecutionScript(submission, useMultiFile) {
     const { language, stdin } = submission;
     const stdinRedirect = stdin ? '< /box/stdin.txt' : '';
 
@@ -213,33 +243,47 @@ class FirecrackerExecutor {
     script += 'cd /box\n';
     script += 'exec 2>&1\n'; // Redirect stderr to stdout for capture
 
-    if (language.id === MULTI_FILE_LANGUAGE_ID) {
+    if (useMultiFile) {
       // Multi-file program: use compile/run scripts from ZIP
-      script += 'if [ ! -f /box/run ]; then\n';
-      script += '  echo "Multi-file program requires a \\"run\\" script in the ZIP archive" >&2\n';
+      // Check both 'run' and 'run.sh'
+      script += 'if [ -f /box/run ]; then\n';
+      script += '  RUN_SCRIPT=/box/run\n';
+      script += 'elif [ -f /box/run.sh ]; then\n';
+      script += '  RUN_SCRIPT=/box/run.sh\n';
+      script += 'else\n';
+      script += '  echo "Multi-file program requires a \\"run\\" (or \\"run.sh\\") script in the ZIP archive" >&2\n';
       script += '  exit 100\n';
       script += 'fi\n';
+      // Check both 'compile' and 'compile.sh'
       script += 'if [ -f /box/compile ]; then\n';
       script += '  bash /box/compile 2>/box/compile_error.txt\n';
-      script += '  if [ $? -ne 0 ]; then\n';
-      script += '    cat /box/compile_error.txt\n';
-      script += '    exit 100\n';
-      script += '  fi\n';
+      script += '  if [ $? -ne 0 ]; then cat /box/compile_error.txt; exit 100; fi\n';
+      script += 'elif [ -f /box/compile.sh ]; then\n';
+      script += '  bash /box/compile.sh 2>/box/compile_error.txt\n';
+      script += '  if [ $? -ne 0 ]; then cat /box/compile_error.txt; exit 100; fi\n';
       script += 'fi\n';
-      script += `timeout ${submission.wall_time_limit} bash /box/run ${stdinRedirect}\n`;
+      script += `timeout ${submission.wall_time_limit} bash $RUN_SCRIPT ${stdinRedirect}\n`;
       script += 'exit $?\n';
     } else {
       // Standard language: use compile_cmd/run_cmd from language config
       if (language.compile_cmd) {
-        script += `${language.compile_cmd} 2>/box/compile_error.txt\n`;
+        let compileCmd = language.compile_cmd;
+        if (submission.compiler_options) {
+          compileCmd += ` ${submission.compiler_options}`;
+        }
+        script += `${compileCmd} 2>/box/compile_error.txt\n`;
         script += 'if [ $? -ne 0 ]; then\n';
         script += '  cat /box/compile_error.txt\n';
-        script += '  exit 100\n'; // Special exit code for compilation error
+        script += '  exit 100\n';
         script += 'fi\n';
       }
 
       // Run step
-      script += `timeout ${submission.wall_time_limit} ${language.run_cmd} ${stdinRedirect}\n`;
+      let runCmd = language.run_cmd;
+      if (submission.command_line_arguments) {
+        runCmd += ` ${submission.command_line_arguments}`;
+      }
+      script += `timeout ${submission.wall_time_limit} ${runCmd} ${stdinRedirect}\n`;
       script += 'exit $?\n';
     }
 
@@ -256,7 +300,7 @@ class FirecrackerExecutor {
     return {
       'boot-source': {
         kernel_image_path: KERNEL_PATH,
-        boot_args: 'console=ttyS0 reboot=k panic=1 pci=off init=/box/run.sh',
+        boot_args: 'console=ttyS0 reboot=k panic=1 pci=off init=/box/_exec.sh',
       },
       'drives': [
         {
