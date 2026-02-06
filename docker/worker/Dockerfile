@@ -31,7 +31,7 @@ RUN git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate \
     && chmod 4755 /usr/local/bin/isolate \
     && rm -rf /tmp/isolate \
     && mkdir -p /usr/local/etc /var/local/lib/isolate /run/isolate \
-    && printf 'box_root = /var/local/lib/isolate\nlock_root = /run/isolate\ncg_root = /sys/fs/cgroup\nfirst_uid = 60000\nfirst_gid = 60000\nnum_boxes = 1000\nrestricted_init = 0\n' \
+    && printf 'box_root = /var/local/lib/isolate\nlock_root = /run/isolate\ncg_root = /sys/fs/cgroup/isolate\nfirst_uid = 60000\nfirst_gid = 60000\nnum_boxes = 1000\nrestricted_init = 0\n' \
        > /usr/local/etc/isolate
 
 # ── 5. Create runner user (for non-isolate fallback) ───────────────────────
@@ -42,7 +42,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 COPY src/ ./src/
+COPY docker/worker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-EXPOSE 3000
-
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "src/index.js"]
