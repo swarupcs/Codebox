@@ -8,12 +8,7 @@ const MULTI_FILE_LANGUAGE_ID = 89;
 
 // Submission validation schema
 const submissionSchema = Joi.object({
-  source_code: Joi.string().max(config.execution.maxSourceSize)
-    .when('language_id', {
-      is: MULTI_FILE_LANGUAGE_ID,
-      then: Joi.string().allow('', null).default(null),
-      otherwise: Joi.string().required(),
-    }),
+  source_code: Joi.string().max(config.execution.maxSourceSize).allow('', null).default(null),
   language_id: Joi.number().integer().required().custom((value, helpers) => {
     if (!isValidLanguageId(value)) {
       return helpers.error('any.invalid');

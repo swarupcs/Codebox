@@ -35,8 +35,8 @@ class IsolateExecutor {
       boxDir = initOut.trim();                     // e.g. /var/local/lib/isolate/0
       const workDir = path.join(boxDir, 'box');    // host path: <root>/box/ maps to /box inside sandbox
 
-      // ── Write source code (skip for multi-file) ─────────────────────
-      if (language.id !== MULTI_FILE_LANGUAGE_ID && submission.source_code) {
+      // ── Write source code (skip if empty or multi-file) ────────────
+      if (submission.source_code && language.source_file) {
         await fs.writeFile(path.join(workDir, language.source_file), submission.source_code);
       }
 
@@ -49,9 +49,18 @@ class IsolateExecutor {
         await this.extractAdditionalFiles(workDir, submission);
       }
 
-      // ── Multi-file program (language 89) ────────────────────────────
+      // ── Multi-file program: language 89 or ZIP with run script ─────
       if (language.id === MULTI_FILE_LANGUAGE_ID) {
         return await this.executeMultiFile(boxId, workDir, submission);
+      }
+      // Detect multi-file mode: empty source_code + additional_files with run script
+      if (!submission.source_code && submission.additional_files) {
+        for (const name of ['run', 'run.sh']) {
+          try {
+            await fs.access(path.join(workDir, name));
+            return await this.executeMultiFile(boxId, workDir, submission);
+          } catch { /* try next */ }
+        }
       }
 
       // ── Compile if needed ───────────────────────────────────────────
