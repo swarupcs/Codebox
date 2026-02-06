@@ -25,6 +25,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - AUTH_TOKEN=${AUTH_TOKEN}
       - PORT=3000
+      - BODY_LIMIT=10mb
       - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-200}
     depends_on:
       - redis
