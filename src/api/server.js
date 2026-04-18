@@ -6,6 +6,7 @@ import logger from '../utils/logger.js';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimitMiddleware } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { metricsHandler } from './metrics.js';
 import routes from './routes/index.js';
 
 const app = express();
@@ -44,6 +45,9 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Prometheus metrics (no auth required)
+app.get('/metrics', metricsHandler);
 
 // Authentication for protected routes
 app.use(authMiddleware);
