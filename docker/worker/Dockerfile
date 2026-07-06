@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     ca-certificates curl gnupg \
     unzip bash time \
-    make git pkg-config libcap-dev libsystemd-dev \
+    make git pkg-config libcap-dev libsystemd-dev libseccomp-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ── 1a. Judge0-compatible binary path symlinks ───────────────────────────────
