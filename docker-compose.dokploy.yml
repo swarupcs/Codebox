@@ -1,0 +1,46 @@
+version: '3.8'
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - AUTH_TOKEN=${AUTH_TOKEN}
+      - PORT=3000
+      - BODY_LIMIT=50mb
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-200}
+    expose:
+      - "3000"
+    depends_on:
+      - redis
+    restart: always
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    command: node src/queue/worker.js
+    privileged: true
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - EXECUTOR_TYPE=isolate
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-6}
+      - DEFAULT_MEMORY_LIMIT=${DEFAULT_MEMORY_LIMIT:-256000}
+      - MAX_MEMORY_LIMIT=${MAX_MEMORY_LIMIT:-512000}
+      - RESULT_CACHE_TTL=${RESULT_CACHE_TTL:-1800}
+    depends_on:
+      - redis
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction
+    restart: always
+
+volumes:
+  redis_data:
